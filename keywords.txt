@@ -1,0 +1,39 @@
+#######################################
+# Syntax Coloring Map For GyverNTP
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+GyverNTP	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+setGMT	KEYWORD2
+setPeriod	KEYWORD2
+setHost	KEYWORD2
+begin	KEYWORD2
+end	KEYWORD2
+tick	KEYWORD2
+requestTime	KEYWORD2
+msFromUpdate	KEYWORD2
+unix	KEYWORD2
+ms	KEYWORD2
+second	KEYWORD2
+minute	KEYWORD2
+hour	KEYWORD2
+day	KEYWORD2
+month	KEYWORD2
+year	KEYWORD2
+dayWeek	KEYWORD2
+timeString	KEYWORD2
+dateString	KEYWORD2
+ping	KEYWORD2
+status	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
