@@ -26,15 +26,15 @@ void setup() {
 void loop() {
   ntp.tick();
   
-  if (ntp.ms() == 0) {
+  if (ntp.ms() == 0) {// секунда почалась
     delay(1);
     digitalWrite(LED_BUILTIN, 1);
+    Serial.println(ntp.timeString()); //выводим
+    Serial.println(ntp.dateString());
+    Serial.println();
   }
   if (ntp.ms() == 500) {
     delay(1);
     digitalWrite(LED_BUILTIN, 0);
-    Serial.println(ntp.timeString());
-    Serial.println(ntp.dateString());
-    Serial.println();
   }
 }
