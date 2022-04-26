@@ -1,4 +1,4 @@
-[![Foo](https://img.shields.io/badge/Version-1.0-brightgreen.svg?style=flat-square)](#versions)
+[![Foo](https://img.shields.io/badge/Version-1.1-brightgreen.svg?style=flat-square)](#versions)
 [![Foo](https://img.shields.io/badge/Website-AlexGyver.ru-blue.svg?style=flat-square)](https://alexgyver.ru/)
 [![Foo](https://img.shields.io/badge/%E2%82%BD$%E2%82%AC%20%D0%9D%D0%B0%20%D0%BF%D0%B8%D0%B2%D0%BE-%D1%81%20%D1%80%D1%8B%D0%B1%D0%BA%D0%BE%D0%B9-orange.svg?style=flat-square)](https://alexgyver.ru/support_alex/)
 
@@ -39,20 +39,21 @@ esp8266, esp32
 ## Инициализация
 ```cpp
 GyverNTP ntp;               // параметры по умолчанию (gmt 0, период 1 минута)
-GyverNTP(gmt);              // часовой пояс (например Москва 3)
-GyverNTP(gmt, period);      // часовой пояс и период обновления в секундах
+GyverNTP(gmt);              // часовой пояс в часах (например Москва 3)
+GyverNTP(gmt, period);      // часовой пояс в часах и период обновления в секундах
 ```
 
 <a id="usage"></a>
 ## Использование
 ```cpp
-void setGMT(int8_t gmt);        // установить часовой пояс
+void setGMTminute(int16_t gmt); // установить часовой пояс в минутах
+void setGMT(int8_t gmt);        // установить часовой пояс в часах
 void setPeriod(uint16_t prd);   // установить период обновления в секундах
 void setHost(char* host);       // установить хост (по умолч. "pool.ntp.org")
 void begin();                   // запустить
 void end();                     // остановить
 
-uint8_t tick();                 // тикер, обновляет время по своему таймеру. Вернёт статус (см. ниже)
+uint8_t tick();                 // тикер, обновляет время по своему таймеру. Вернёт true если произошла попытка обновления
 uint8_t requestTime();          // вручную запросить и обновить время с сервера. Вернёт статус (см. ниже)
 uint32_t msFromUpdate();        // миллисекунд с последнего обновления (с 0 секунд unix)
 uint32_t unix();                // unix время
@@ -69,6 +70,7 @@ uint8_t dayWeek();              // получить день недели
 String timeString();            // получить строку времени формата ЧЧ:ММ:СС
 String dateString();            // получить строку даты формата ДД.ММ.ГГГГ
 
+bool synced();                  // получить статус текущего времени, true - синхронизировано
 int16_t ping();                 // получить пинг сервера
 uint8_t status();               // получить статус системы
 
@@ -133,6 +135,7 @@ void loop() {
 <a id="versions"></a>
 ## Версии
 - v1.0
+- v1.1 - мелкие улучшения и gmt в минутах
 
 <a id="feedback"></a>
 ## Баги и обратная связь

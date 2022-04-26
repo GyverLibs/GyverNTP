@@ -13,12 +13,13 @@
     MIT License
     
     v1.0
+    v1.1 - мелкие улучшения и gmt в минутах
 */
 
 #ifndef _GyverNTP_h
 #define _GyverNTP_h
 
-#define GN_NTP_TIMEOUT 1500
+#define GN_NTP_TIMEOUT 3000
 #define GN_LOCAL_PORT 1337
 #define GN_DEFAULT_HOST "pool.ntp.org"
 #define GN_NTP_PORT 123
@@ -33,8 +34,13 @@ public:
         setPeriod(prd);
     }
     
-    // установить часовой пояс
-    void setGMT(int8_t gmt) {
+    // установить часовой пояс в часах
+    void setGMT(int16_t gmt) {
+        _gmt = gmt * 60L;
+    }
+    
+    // установить часовой пояс в минутах
+    void setGMTminute(int16_t gmt) {
         _gmt = gmt;
     }
     
@@ -60,12 +66,13 @@ public:
     }
     
     // тикер, обновляет время по своему таймеру
-    uint8_t tick() {
+    bool tick() {
         if (_stat != 1 && (millis() - _tmr >= _prd || !_tmr)) {
             _tmr = millis();            // сброс таймера
             _stat = requestTime();      // запрос NTP
+            return 1;
         }
-        return _stat;
+        return 0;
     }
     
     // вручную запросить и обновить время с сервера
@@ -79,12 +86,15 @@ public:
         _NTP_UDP.write(buf, 48);
         if (!_NTP_UDP.endPacket()) return 4;
         uint32_t rtt = millis();
-        while (!_NTP_UDP.parsePacket()) {
+        while (_NTP_UDP.parsePacket() != 48 && _NTP_UDP.remotePort() == GN_NTP_PORT) {
             if (millis() - rtt > GN_NTP_TIMEOUT) return 5;
+            yield();
         }
         rtt = millis() - rtt;                   // время между отправкой и ответом
         _NTP_UDP.read(buf, 48);                 // читаем
         if (buf[40] == 0) return 6;             // некорректное время
+        
+        _sync = 1;
         _last_upd = millis();                   // запомнили время обновления
         uint16_t r_ms = ((buf[36] << 8) | buf[37]) * 1000L >> 16;    // мс запроса клиента
         uint16_t a_ms = ((buf[44] << 8) | buf[45]) * 1000L >> 16;    // мс ответа сервера
@@ -116,9 +126,9 @@ public:
     
     // получить секунды
     uint8_t second() {
-        //updateTime();
-        //return _s;
-        return (unix() + _gmt * 3600ul) % 60;
+        updateTime();
+        return _s;
+        //return (unix() + _gmt * 60L) % 60;
     }
     
     // получить минуты
@@ -160,6 +170,7 @@ public:
     // получить строку времени формата ЧЧ:ММ:СС
     String timeString() {
         String str;
+        if (!_sync) return str = F("Not sync");
         str.reserve(8);
         if (hour() < 10) str += '0';
         str += hour();
@@ -175,6 +186,7 @@ public:
     // получить строку даты формата ДД.ММ.ГГГГ
     String dateString() {
         String str;
+        if (!_sync) return str = F("Not sync");
         str.reserve(10);
         if (day() < 10) str += '0';
         str += day();
@@ -188,10 +200,10 @@ public:
     
     // пересчёт unix во время и дату и буферизация
     void updateTime() {
-        if (millis() - _prev_calc < 500) return;
+        if (millis() - _prev_calc < 300) return;
         _prev_calc = millis();
         // http://howardhinnant.github.io/date_algorithms.html#civil_from_days
-        uint32_t u = unix() + _gmt * 3600ul;
+        uint32_t u = unix() + _gmt * 60L;
         _s = u % 60ul;
         u /= 60ul;
         _m = u % 60ul;
@@ -231,6 +243,11 @@ public:
         return _stat;
     }
     
+    // получить статус текущего времени, true - синхронизировано
+    bool synced() {
+        return _sync;
+    }
+    
 private:
     const char* _host = GN_DEFAULT_HOST;
     uint32_t _prev_calc = 0;
@@ -238,9 +255,10 @@ private:
     uint32_t _tmr = 0;
     uint32_t _prd = 60000;
     uint32_t _unix = 0;
-    int8_t _gmt = 0;
+    int16_t _gmt = 0;
     int16_t _ping = 0;
     uint8_t _stat = 5;
+    bool _sync = 0;
     
     uint8_t _day, _month, _dayw, _h, _m, _s;
     int16_t _year;

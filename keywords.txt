@@ -12,6 +12,7 @@ GyverNTP	KEYWORD1
 # Methods and Functions (KEYWORD2)
 #######################################
 
+setGMTminute	KEYWORD2
 setGMT	KEYWORD2
 setPeriod	KEYWORD2
 setHost	KEYWORD2
@@ -33,6 +34,7 @@ timeString	KEYWORD2
 dateString	KEYWORD2
 ping	KEYWORD2
 status	KEYWORD2
+synced	KEYWORD2
 
 #######################################
 # Constants (LITERAL1)
