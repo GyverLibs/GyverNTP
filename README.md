@@ -47,7 +47,7 @@ GyverNTP(gmt, period);      // часовой пояс в часах и пери
 <a id="usage"></a>
 ## Использование
 ```cpp
-void begin();                   // запустить
+bool begin();                   // запустить
 void end();                     // остановить
 
 void setGMTminute(int16_t gmt); // установить часовой пояс в минутах

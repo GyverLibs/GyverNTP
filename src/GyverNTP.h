@@ -56,8 +56,9 @@ public:
     }
     
     // запустить
-    void begin() {
+    bool begin() {
         _stat = !udp.begin(GN_LOCAL_PORT);     // stat 0 - OK
+        return !_stat;
     }
     
     // остановить
@@ -79,7 +80,7 @@ public:
                 if (_stat != 1 && (millis() - _tmr >= _prd || !_tmr)) {
                     _tmr = millis();            // сброс таймера
                     checkLeap();                // смещаем время
-                    _stat = sendPacket();       // запрос NTP
+                    sendPacket();               // запрос NTP
                     if (!_stat) requested = 1;  // успешно
                     return 1;
                 }
@@ -90,26 +91,32 @@ public:
                     return 1;
                 }
                 if (udp.parsePacket() == 48) {
-                    _stat = readPacket();
+                    readPacket();
                     requested = 0;
                     return 1;
                 }
             }
         } else {
             if (_stat != 1 && (millis() - _tmr >= _prd || !_tmr)) {
-                _tmr = millis();                // сброс таймера
-                checkLeap();                    // смещаем время
-                uint8_t req = sendPacket();     // запрос
-                if (req) return req;            // возврат ошибки (> 0)
-                while (udp.parsePacket() != 48) {
-                    if (millis() - rtt > GN_NTP_TIMEOUT) return 5;
-                    yield();
-                }
-                _stat = readPacket();
+                _tmr = millis();        // сброс таймера
+                requestTime();
                 return 1;
             }
         }
         return 0;
+    }
+    
+    // вручную запросить и обновить время с сервера. Вернёт статус (см. ниже)
+    uint8_t requestTime() {
+        if (_stat == 1) return 1;       // клиент не запущен
+        checkLeap();                    // смещаем время
+        sendPacket();                   // запрос
+        if (_stat) return _stat;        // возврат ошибки (> 0)
+        while (udp.parsePacket() != 48) {
+            if (millis() - rtt > GN_NTP_TIMEOUT) return 5;
+            yield();
+        }
+        return readPacket();
     }
     
     // миллисекунд с последнего обновления (с 0 секунд unix)
@@ -253,23 +260,23 @@ private:
     }
     
     uint8_t sendPacket() {
-        if (WiFi.status() != WL_CONNECTED) return 2;
+        if (WiFi.status() != WL_CONNECTED) return _stat = 2;
         uint8_t buf[48];
         memset(buf, 0, 48);
         // https://ru.wikipedia.org/wiki/NTP
         buf[0] = 0b11100011;                    // LI 0x3, v4, client
-        if (!udp.beginPacket(_host, GN_NTP_PORT)) return 3;
+        if (!udp.beginPacket(_host, GN_NTP_PORT)) return _stat = 3;
         udp.write(buf, 48);
-        if (!udp.endPacket()) return 4;
+        if (!udp.endPacket()) return _stat = 4;
         rtt = millis();
-        return 0;
+        return _stat = 0;
     }
     
     uint8_t readPacket() {
-        if (udp.remotePort() != GN_NTP_PORT) return 6;     // не наш порт
+        if (udp.remotePort() != GN_NTP_PORT) return _stat = 6;     // не наш порт
         uint8_t buf[48];
         udp.read(buf, 48);                      // читаем
-        if (buf[40] == 0) return 6;             // некорректное время
+        if (buf[40] == 0) return _stat = 6;     // некорректное время
         rtt = millis() - rtt;                   // время между запросом и ответом
         _last_upd = millis();                   // запомнили время обновления
         if (!_sync) _sync = 1;                  // время синхронизировано
@@ -286,7 +293,7 @@ private:
         _last_upd -= a_ms;                      // смещение для дальнейших расчётов
         _unix = (((uint32_t)buf[40] << 24) | ((uint32_t)buf[41] << 16) | ((uint32_t)buf[42] << 8) | buf[43]);    // 1900
         _unix -= 2208988800ul;                  // перевод в UNIX (1970)
-        return 0;
+        return _stat = 0;
     }
     
     // защита от переполнения разности через 50 суток
