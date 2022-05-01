@@ -16,9 +16,11 @@ setGMTminute	KEYWORD2
 setGMT	KEYWORD2
 setPeriod	KEYWORD2
 setHost	KEYWORD2
+asyncMode	KEYWORD2
 begin	KEYWORD2
 end	KEYWORD2
 tick	KEYWORD2
+busy	KEYWORD2
 requestTime	KEYWORD2
 msFromUpdate	KEYWORD2
 unix	KEYWORD2
@@ -35,6 +37,7 @@ dateString	KEYWORD2
 ping	KEYWORD2
 status	KEYWORD2
 synced	KEYWORD2
+ignorePing	KEYWORD2
 
 #######################################
 # Constants (LITERAL1)

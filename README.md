@@ -1,4 +1,4 @@
-[![Foo](https://img.shields.io/badge/Version-1.1-brightgreen.svg?style=flat-square)](#versions)
+[![Foo](https://img.shields.io/badge/Version-1.2-brightgreen.svg?style=flat-square)](#versions)
 [![Foo](https://img.shields.io/badge/Website-AlexGyver.ru-blue.svg?style=flat-square)](https://alexgyver.ru/)
 [![Foo](https://img.shields.io/badge/%E2%82%BD$%E2%82%AC%20%D0%9D%D0%B0%20%D0%BF%D0%B8%D0%B2%D0%BE-%D1%81%20%D1%80%D1%8B%D0%B1%D0%BA%D0%BE%D0%B9-orange.svg?style=flat-square)](https://alexgyver.ru/support_alex/)
 
@@ -10,6 +10,7 @@
 - Получение UNIX-времени, а также миллисекунд, секунд, минут, часов, дня, месяца, года и дня недели
 - Синхронизация по таймеру
 - Обработка ошибок
+- Асинхронный режим
 
 ### Совместимость
 esp8266, esp32
@@ -38,7 +39,7 @@ esp8266, esp32
 <a id="init"></a>
 ## Инициализация
 ```cpp
-GyverNTP ntp;               // параметры по умолчанию (gmt 0, период 1 минута)
+GyverNTP ntp;               // параметры по умолчанию (gmt 0, период 60 секунд)
 GyverNTP(gmt);              // часовой пояс в часах (например Москва 3)
 GyverNTP(gmt, period);      // часовой пояс в часах и период обновления в секундах
 ```
@@ -46,12 +47,15 @@ GyverNTP(gmt, period);      // часовой пояс в часах и пери
 <a id="usage"></a>
 ## Использование
 ```cpp
+void begin();                   // запустить
+void end();                     // остановить
+
 void setGMTminute(int16_t gmt); // установить часовой пояс в минутах
 void setGMT(int8_t gmt);        // установить часовой пояс в часах
 void setPeriod(uint16_t prd);   // установить период обновления в секундах
 void setHost(char* host);       // установить хост (по умолч. "pool.ntp.org")
-void begin();                   // запустить
-void end();                     // остановить
+void asyncMode(bool f);         // асинхронный режим (по умолч. включен, true)
+void ignorePing(bool f);        // не учитывать пинг соединения (умолч. false)
 
 uint8_t tick();                 // тикер, обновляет время по своему таймеру. Вернёт true если произошла попытка обновления
 uint8_t requestTime();          // вручную запросить и обновить время с сервера. Вернёт статус (см. ниже)
@@ -71,6 +75,7 @@ String timeString();            // получить строку времени 
 String dateString();            // получить строку даты формата ДД.ММ.ГГГГ
 
 bool synced();                  // получить статус текущего времени, true - синхронизировано
+bool busy();                    // вернёт true, если tick ожидает ответа сервера в асинхронном режиме
 int16_t ping();                 // получить пинг сервера
 uint8_t status();               // получить статус системы
 
@@ -85,6 +90,7 @@ uint8_t status();               // получить статус системы
 
 ### Особенности
 - Нужно вызывать `tick()` в главном цикле программы `loop()`, он синхронизирует время по своему таймеру
+- Если основной цикл программы сильно загружен, а время нужно получать с максимальной точностью (несколько мс), то можно выключить асинхронный режим `asyncMode(false)`
 - Библиотека продолжает считать время даже после пропадания синхронизации
 
 <a id="example"></a>
@@ -106,13 +112,15 @@ GyverNTP ntp(3);
 //"ntp.msk-ix.ru"
 
 void setup() {
+  pinMode(LED_BUILTIN, OUTPUT);
   Serial.begin(115200);
   WiFi.begin("WIFI_SSID", "WIFI_PASS");
   while (WiFi.status() != WL_CONNECTED) delay(100);
   Serial.println("Connected");
 
   ntp.begin();
-  pinMode(LED_BUILTIN, OUTPUT);
+  //ntp.asyncMode(false);   // выключить асинхронный режим
+  //ntp.ignorePing(true);   // не учитывать пинг до сервера
 }
 
 void loop() {
@@ -136,6 +144,7 @@ void loop() {
 ## Версии
 - v1.0
 - v1.1 - мелкие улучшения и gmt в минутах
+- v1.2 - оптимизация, улучшена стабильность, добавлен асинхронный режим
 
 <a id="feedback"></a>
 ## Баги и обратная связь

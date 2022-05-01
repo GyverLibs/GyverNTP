@@ -7,6 +7,7 @@
     - Получение UNIX-времени, а также миллисекунд, секунд, минут, часов, дня, месяца, года и дня недели
     - Синхронизация по таймеру
     - Обработка ошибок
+    - Асинхронный режим
     
     AlexGyver, alex@alexgyver.ru
     https://alexgyver.ru/
@@ -14,18 +15,18 @@
     
     v1.0
     v1.1 - мелкие улучшения и gmt в минутах
+    v1.2 - оптимизация, улучшена стабильность, добавлен асинхронный режим
 */
 
 #ifndef _GyverNTP_h
 #define _GyverNTP_h
 
 #define GN_NTP_TIMEOUT 3000
-#define GN_LOCAL_PORT 1337
+#define GN_LOCAL_PORT 1234
 #define GN_DEFAULT_HOST "pool.ntp.org"
 #define GN_NTP_PORT 123
 
 #include <WiFiUdp.h>
-static WiFiUDP _NTP_UDP;
 
 class GyverNTP {
 public:
@@ -36,12 +37,12 @@ public:
     
     // установить часовой пояс в часах
     void setGMT(int16_t gmt) {
-        _gmt = gmt * 60L;
+        _gmt = gmt * 3600L;
     }
     
     // установить часовой пояс в минутах
     void setGMTminute(int16_t gmt) {
-        _gmt = gmt;
+        _gmt = gmt * 60L;
     }
     
     // установить период обновления в секундах
@@ -56,56 +57,58 @@ public:
     
     // запустить
     void begin() {
-        _stat = !_NTP_UDP.begin(GN_LOCAL_PORT);     // stat 0 - OK
+        _stat = !udp.begin(GN_LOCAL_PORT);     // stat 0 - OK
     }
     
     // остановить
     void end() {
-        _NTP_UDP.stop();
+        udp.stop();
         _stat = 1;
     }
     
-    // тикер, обновляет время по своему таймеру
-    bool tick() {
-        if (_stat != 1 && (millis() - _tmr >= _prd || !_tmr)) {
-            _tmr = millis();            // сброс таймера
-            _stat = requestTime();      // запрос NTP
-            return 1;
-        }
-        return 0;
+    // асинхронный режим (по умолч. включен, true)
+    void asyncMode(bool f) {
+        _async = f;
     }
     
-    // вручную запросить и обновить время с сервера
-    uint8_t requestTime() {
-        if (WiFi.status() != WL_CONNECTED) return 2;
-        uint8_t buf[48];
-        memset(buf, 0, 48);
-        // https://ru.wikipedia.org/wiki/NTP
-        buf[0] = 0b11100011;                    // LI 0x3, v4, client
-        if (!_NTP_UDP.beginPacket(_host, GN_NTP_PORT)) return 3;
-        _NTP_UDP.write(buf, 48);
-        if (!_NTP_UDP.endPacket()) return 4;
-        uint32_t rtt = millis();
-        while (_NTP_UDP.parsePacket() != 48 && _NTP_UDP.remotePort() == GN_NTP_PORT) {
-            if (millis() - rtt > GN_NTP_TIMEOUT) return 5;
-            yield();
+    // ============== ТИКЕР ===============
+    // тикер, обновляет время по своему таймеру
+    bool tick() {
+        if (_async) {
+            if (!requested) {
+                if (_stat != 1 && (millis() - _tmr >= _prd || !_tmr)) {
+                    _tmr = millis();            // сброс таймера
+                    checkLeap();                // смещаем время
+                    _stat = sendPacket();       // запрос NTP
+                    if (!_stat) requested = 1;  // успешно
+                    return 1;
+                }
+            } else {
+                if (millis() - rtt > GN_NTP_TIMEOUT) {
+                    _stat = 5;
+                    requested = 0;
+                    return 1;
+                }
+                if (udp.parsePacket() == 48) {
+                    _stat = readPacket();
+                    requested = 0;
+                    return 1;
+                }
+            }
+        } else {
+            if (_stat != 1 && (millis() - _tmr >= _prd || !_tmr)) {
+                _tmr = millis();                // сброс таймера
+                checkLeap();                    // смещаем время
+                uint8_t req = sendPacket();     // запрос
+                if (req) return req;            // возврат ошибки (> 0)
+                while (udp.parsePacket() != 48) {
+                    if (millis() - rtt > GN_NTP_TIMEOUT) return 5;
+                    yield();
+                }
+                _stat = readPacket();
+                return 1;
+            }
         }
-        rtt = millis() - rtt;                   // время между отправкой и ответом
-        _NTP_UDP.read(buf, 48);                 // читаем
-        if (buf[40] == 0) return 6;             // некорректное время
-        
-        _sync = 1;
-        _last_upd = millis();                   // запомнили время обновления
-        uint16_t r_ms = ((buf[36] << 8) | buf[37]) * 1000L >> 16;    // мс запроса клиента
-        uint16_t a_ms = ((buf[44] << 8) | buf[45]) * 1000L >> 16;    // мс ответа сервера
-        int16_t err = a_ms - r_ms;              // время обработки сервером
-        if (err < 0) err += 1000;               // переход через секунду
-        rtt = (rtt - err) / 2;                  // текущий пинг
-        if (_ping == 0) _ping = rtt;            // первая итерация
-        else _ping = (_ping + rtt) / 2;         // бегущее среднее по двум
-        _last_upd -= (a_ms + _ping);            // смещение для дальнейших расчётов
-        _unix = (((uint32_t)buf[40] << 24) | ((uint32_t)buf[41] << 16) | ((uint32_t)buf[42] << 8) | buf[43]);    // 1900
-        _unix -= 2208988800ul;                  // перевод в UNIX (1970)
         return 0;
     }
     
@@ -126,21 +129,17 @@ public:
     
     // получить секунды
     uint8_t second() {
-        updateTime();
-        return _s;
-        //return (unix() + _gmt * 60L) % 60;
+        return (unix() + _gmt) % 60ul;
     }
     
     // получить минуты
     uint8_t minute() {
-        updateTime();
-        return _m;
+        return ((unix() + _gmt) % 3600ul) / 60ul;
     }
     
     // получить часы
     uint8_t hour() {
-        updateTime();
-        return _h;
+        return ((unix() + _gmt) % 86400ul) / 3600ul;
     }
     
     // получить день месяца
@@ -198,35 +197,24 @@ public:
         return str;
     }
     
-    // пересчёт unix во время и дату и буферизация
-    void updateTime() {
-        if (millis() - _prev_calc < 300) return;
-        _prev_calc = millis();
-        // http://howardhinnant.github.io/date_algorithms.html#civil_from_days
-        uint32_t u = unix() + _gmt * 60L;
-        _s = u % 60ul;
-        u /= 60ul;
-        _m = u % 60ul;
-        u /= 60ul;
-        _h = u % 24ul;
-        u /= 24ul;
-        _dayw = (u + 4) % 7;
-        if (!_dayw) _dayw = 7;
-        u += 719468;
-        uint8_t era = u / 146097ul;
-        uint16_t doe = u - era * 146097ul;
-        uint16_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-        _year = yoe + era * 400;
-        uint16_t doy = doe - (yoe * 365 + yoe / 4 - yoe / 100);
-        uint16_t mp = (doy * 5 + 2) / 153;
-        _day = doy - (mp * 153 + 2) / 5 + 1;
-        _month = mp + (mp < 10 ? 3 : -9);
-        _year += (_month <= 2);
-    }
-    
     // получить пинг сервера
     int16_t ping() {
         return _ping;
+    }
+    
+    // не учитывать пинг соединения
+    void ignorePing(bool f) {
+        _ignorePing = f;
+    }
+    
+    // вернёт true, если tick ожидает ответа сервера в асинхронном режиме
+    bool busy() {
+        return requested;
+    }
+    
+    // получить статус текущего времени, true - синхронизировано
+    bool synced() {
+        return _sync;
     }
     
     // получить статус системы
@@ -243,24 +231,91 @@ public:
         return _stat;
     }
     
-    // получить статус текущего времени, true - синхронизировано
-    bool synced() {
-        return _sync;
+private:
+    // пересчёт unix во время и дату и буферизация
+    void updateTime() {
+        if (millis() - _prev_calc < 300) return;
+        _prev_calc = millis();
+        // http://howardhinnant.github.io/date_algorithms.html#civil_from_days
+        uint32_t u = (unix() + _gmt) / 86400ul;
+        _dayw = (u + 4) % 7;
+        if (!_dayw) _dayw = 7;
+        u += 719468;
+        uint8_t era = u / 146097ul;
+        uint16_t doe = u - era * 146097ul;
+        uint16_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+        _year = yoe + era * 400;
+        uint16_t doy = doe - (yoe * 365 + yoe / 4 - yoe / 100);
+        uint16_t mp = (doy * 5 + 2) / 153;
+        _day = doy - (mp * 153 + 2) / 5 + 1;
+        _month = mp + (mp < 10 ? 3 : -9);
+        _year += (_month <= 2);
     }
     
-private:
+    uint8_t sendPacket() {
+        if (WiFi.status() != WL_CONNECTED) return 2;
+        uint8_t buf[48];
+        memset(buf, 0, 48);
+        // https://ru.wikipedia.org/wiki/NTP
+        buf[0] = 0b11100011;                    // LI 0x3, v4, client
+        if (!udp.beginPacket(_host, GN_NTP_PORT)) return 3;
+        udp.write(buf, 48);
+        if (!udp.endPacket()) return 4;
+        rtt = millis();
+        return 0;
+    }
+    
+    uint8_t readPacket() {
+        if (udp.remotePort() != GN_NTP_PORT) return 6;     // не наш порт
+        uint8_t buf[48];
+        udp.read(buf, 48);                      // читаем
+        if (buf[40] == 0) return 6;             // некорректное время
+        rtt = millis() - rtt;                   // время между запросом и ответом
+        _last_upd = millis();                   // запомнили время обновления
+        if (!_sync) _sync = 1;                  // время синхронизировано
+        uint16_t a_ms = ((buf[44] << 8) | buf[45]) * 1000L >> 16;    // мс ответа сервера
+        if (!_ignorePing) {
+            uint16_t r_ms = ((buf[36] << 8) | buf[37]) * 1000L >> 16;    // мс запроса клиента
+            int16_t err = a_ms - r_ms;          // время обработки сервером
+            if (err < 0) err += 1000;           // переход через секунду
+            rtt = (rtt - err) / 2;              // текущий пинг
+            if (_ping == 0) _ping = rtt;        // первая итерация
+            else _ping = (_ping + rtt) / 2;     // бегущее среднее по двум
+            _last_upd -= _ping;                 // учитываем пинг
+        }
+        _last_upd -= a_ms;                      // смещение для дальнейших расчётов
+        _unix = (((uint32_t)buf[40] << 24) | ((uint32_t)buf[41] << 16) | ((uint32_t)buf[42] << 8) | buf[43]);    // 1900
+        _unix -= 2208988800ul;                  // перевод в UNIX (1970)
+        return 0;
+    }
+    
+    // защита от переполнения разности через 50 суток
+    void checkLeap() {
+        uint32_t diff = millis() - _last_upd;
+        if (_unix && diff > 86400000ul) {
+            _unix += diff / 1000ul;
+            _last_upd = millis() - diff % 1000ul;
+        }
+    }
+    
+    WiFiUDP udp;
     const char* _host = GN_DEFAULT_HOST;
     uint32_t _prev_calc = 0;
     uint32_t _last_upd = 0;
     uint32_t _tmr = 0;
     uint32_t _prd = 60000;
     uint32_t _unix = 0;
-    int16_t _gmt = 0;
+    uint32_t rtt;
+    
+    int32_t _gmt = 0;
     int16_t _ping = 0;
     uint8_t _stat = 5;
     bool _sync = 0;
-    
-    uint8_t _day, _month, _dayw, _h, _m, _s;
+    bool requested = 0;
+    bool _ignorePing = 0;
+    bool _async = 1;
+
+    uint8_t _day, _month, _dayw;
     int16_t _year;
 };
 #endif

@@ -14,13 +14,15 @@ GyverNTP ntp(3);
 //"ntp.msk-ix.ru"
 
 void setup() {
+  pinMode(LED_BUILTIN, OUTPUT);
   Serial.begin(115200);
   WiFi.begin("WIFI_SSID", "WIFI_PASS");
   while (WiFi.status() != WL_CONNECTED) delay(100);
   Serial.println("Connected");
 
   ntp.begin();
-  pinMode(LED_BUILTIN, OUTPUT);
+  //ntp.asyncMode(false);   // выключить асинхронный режим
+  //ntp.ignorePing(true);   // не учитывать пинг до сервера
 }
 
 void loop() {
