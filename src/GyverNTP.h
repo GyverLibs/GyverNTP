@@ -98,8 +98,8 @@ public:
             }
         } else {
             if (_stat != 1 && (millis() - _tmr >= _prd || !_tmr)) {
-                _tmr = millis();        // сброс таймера
-                requestTime();
+                _tmr = millis();
+                updateNow();
                 return 1;
             }
         }
@@ -107,7 +107,7 @@ public:
     }
     
     // вручную запросить и обновить время с сервера. Вернёт статус (см. ниже)
-    uint8_t requestTime() {
+    uint8_t updateNow() {
         if (_stat == 1) return 1;       // клиент не запущен
         checkLeap();                    // смещаем время
         sendPacket();                   // запрос
@@ -236,6 +236,10 @@ public:
     */
     uint8_t status() {
         return _stat;
+    }
+    
+    uint8_t requestTime() {
+        return updateNow();
     }
     
 private:

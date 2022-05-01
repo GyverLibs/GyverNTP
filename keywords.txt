@@ -21,8 +21,7 @@ begin	KEYWORD2
 end	KEYWORD2
 tick	KEYWORD2
 busy	KEYWORD2
-requestTime	KEYWORD2
-msFromUpdate	KEYWORD2
+updateNow	KEYWORD2
 unix	KEYWORD2
 ms	KEYWORD2
 second	KEYWORD2
