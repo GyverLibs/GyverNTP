@@ -16,6 +16,7 @@
     v1.0
     v1.1 - мелкие улучшения и gmt в минутах
     v1.2 - оптимизация, улучшена стабильность, добавлен асинхронный режим
+    v1.2.1 - изменён стандартный период обновления
 */
 
 #ifndef _GyverNTP_h
@@ -30,7 +31,8 @@
 
 class GyverNTP {
 public:
-    GyverNTP(int8_t gmt = 0, uint16_t prd = 60) {
+    // конструктор
+    GyverNTP(int8_t gmt = 0, uint16_t prd = 3600) {
         setGMT(gmt);
         setPeriod(prd);
     }
@@ -57,6 +59,7 @@ public:
     
     // запустить
     bool begin() {
+        _tmr = millis();
         _stat = !udp.begin(GN_LOCAL_PORT);     // stat 0 - OK
         return !_stat;
     }
@@ -313,8 +316,8 @@ private:
     const char* _host = GN_DEFAULT_HOST;
     uint32_t _prev_calc = 0;
     uint32_t _last_upd = 0;
-    uint32_t _tmr = 0;
-    uint32_t _prd = 60000;
+    uint32_t _tmr;
+    uint32_t _prd;
     uint32_t _unix = 0;
     uint32_t rtt;
     
