@@ -1,3 +1,5 @@
+This is an automatic translation, may be incorrect in some places. See sources and examples!
+
 # GyverNTP
 Library for getting exact time from NTP server for esp8266/esp32
 - Powered by WiFiUdp.h standard library
