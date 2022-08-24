@@ -30,6 +30,12 @@
 
 #include <WiFiUdp.h>
 
+#ifdef ESP8266
+#include <ESP8266WiFi.h>    // esp8266
+#else
+#include <WiFi.h>           // esp32
+#endif
+
 class GyverNTP {
 public:
     // конструктор
