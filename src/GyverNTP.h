@@ -200,7 +200,7 @@ class GyverNTP : public StampTicker {
         return _stat = Status::OK, 1;
     }
 
-    inline uint32 _merge(uint8_t* buf) {
+    inline uint32_t _merge(uint8_t* buf) {
         return (buf[0] << 8) | buf[1];
     }
 
