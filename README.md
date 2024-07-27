@@ -159,7 +159,7 @@ if (ntp.tick()) {
   ntp.minute();   // минуты и так далее
 
   // эффективнее использовать парсер Datime
-  Datime dt(ntp);  // ntp само конвертируется в unix
+  Datime dt(ntp);  // ntp само конвертируется в Datime
 
   dt.year;
   dt.month;
@@ -177,7 +177,7 @@ if (ntp.tick()) {
   // для удобства также есть класс DaySeconds, позволяющий задать время внутри суток
   DaySeconds ds(5, 10, 0);  // 5 часов, 10 минут, 0 секунд
 
-  // ntp может сравниваться напрямую с DaySeconds
+  // GyverNTP может сравниваться напрямую с DaySeconds
   if (ntp == ds) { }
 }
 ```
