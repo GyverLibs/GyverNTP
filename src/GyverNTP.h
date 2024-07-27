@@ -6,7 +6,7 @@
 #define GNTP_DEFAULT_HOST "pool.ntp.org"  // хост по умолчанию
 #define GNTP_NTP_PORT 123                 // ntp порт
 
-#include <StampTicker.h>
+#include <Stamp.h>
 #include <WiFiUdp.h>
 
 #if defined(ESP8266)
@@ -97,44 +97,51 @@ class GyverNTP : public StampTicker {
         return _online;
     }
 
+    // вернёт true при изменении статуса
+    bool statusChanged() {
+        return _changed;
+    }
+
     // ============== ТИКЕР ===============
-    // тикер, обновляет время по своему таймеру. Вернёт true при смене статуса
+    // тикер, обновляет время по своему таймеру. Вернёт true на каждой секунде, если синхронизирован
     bool tick() {
-        StampTicker::tick();
+        if (_changed) _changed = 0;
 
         if (!_UDP_ok || WiFi.status() != WL_CONNECTED) {
             if (_stat != Status::NoWiFi) {
                 _error(Status::NoWiFi);
-                return 1;
+                _changed = 1;
             }
-            return 0;
         }
 
-        if (_async) {
-            if (!_busy) {
-                if (_timeToUpdate()) {
-                    _busy = sendPacket();
-                    return 1;
+        if (_stat != Status::NoWiFi) {
+            if (_async) {
+                if (!_busy) {
+                    if (_timeToUpdate()) {
+                        _busy = sendPacket();
+                        _changed = 1;
+                    }
+                } else {
+                    if (millis() - _rtt > GNTP_NTP_TIMEOUT) {
+                        _error(Status::ResponseTimeout);
+                        _busy = false;
+                        _changed = 1;
+                    }
+                    if (udp.parsePacket() == 48) {
+                        readPacket();
+                        _busy = false;
+                        _changed = 1;
+                    }
                 }
             } else {
-                if (millis() - _rtt > GNTP_NTP_TIMEOUT) {
-                    _error(Status::ResponseTimeout);
-                    _busy = false;
-                    return 1;
+                if (_timeToUpdate()) {
+                    updateNow();
+                    _changed = 1;
                 }
-                if (udp.parsePacket() == 48) {
-                    readPacket();
-                    _busy = false;
-                    return 1;
-                }
-            }
-        } else {
-            if (_timeToUpdate()) {
-                updateNow();
-                return 1;
             }
         }
-        return 0;
+
+        return StampTicker::tick();
     }
 
     // вручную запросить и обновить время с сервера. true при успехе
@@ -207,6 +214,7 @@ class GyverNTP : public StampTicker {
     bool _error(Status err) {
         _stat = err;
         _online = false;
+        _changed = true;
         return 0;
     }
 
@@ -231,4 +239,5 @@ class GyverNTP : public StampTicker {
     bool _busy = false;
     bool _usePing = true;
     bool _async = true;
+    bool _changed = false;
 };

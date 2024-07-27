@@ -37,6 +37,7 @@ ping	KEYWORD2
 status	KEYWORD2
 synced	KEYWORD2
 ignorePing	KEYWORD2
+statusChanged	KEYWORD2
 
 #######################################
 # Constants (LITERAL1)
