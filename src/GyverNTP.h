@@ -18,6 +18,14 @@
 #endif
 
 class GyverNTP : public StampTicker {
+#ifdef __AVR__
+    typedef void (*StatusHandler)();
+    typedef void (*SyncHandler)();
+#else
+    typedef std::function<void()> StatusHandler;
+    typedef std::function<void()> SyncHandler;
+#endif
+
    public:
     enum Status {
         OK,               // всё ок
@@ -57,6 +65,12 @@ class GyverNTP : public StampTicker {
         _UDP_ok = udp.begin(GNTP_LOCAL_PORT);
         if (_UDP_ok) return _stat = Status::OK, 1;
         else return _error(Status::NoUDP);
+    }
+
+    // запустить и установить часовой пояс в часах или минутах
+    bool begin(int16_t gmt) {
+        setGMT(gmt);
+        return begin();
     }
 
     // остановить
@@ -106,37 +120,36 @@ class GyverNTP : public StampTicker {
     // тикер, обновляет время по своему таймеру. Вернёт true на каждой секунде, если синхронизирован
     bool tick() {
         if (_changed) _changed = 0;
+        if (!_UDP_ok) return 0;
 
-        if (!_UDP_ok || WiFi.status() != WL_CONNECTED) {
+        if (WiFi.status() != WL_CONNECTED) {
             if (_stat != Status::NoWiFi) {
                 _error(Status::NoWiFi);
-                _changed = 1;
             }
         }
 
-        if (_stat != Status::NoWiFi) {
+        if (WiFi.status() == WL_CONNECTED) {
             if (_async) {
                 if (!_busy) {
                     if (_timeToUpdate()) {
-                        _busy = sendPacket();
-                        _changed = 1;
+                        _busy = _sendPacket();
+                        _change();
                     }
                 } else {
                     if (millis() - _rtt > GNTP_NTP_TIMEOUT) {
                         _error(Status::ResponseTimeout);
                         _busy = false;
-                        _changed = 1;
                     }
                     if (udp.parsePacket() == 48) {
-                        readPacket();
+                        _readPacket();
                         _busy = false;
-                        _changed = 1;
+                        _change();
                     }
                 }
             } else {
                 if (_timeToUpdate()) {
                     updateNow();
-                    _changed = 1;
+                    _change();
                 }
             }
         }
@@ -147,13 +160,33 @@ class GyverNTP : public StampTicker {
     // вручную запросить и обновить время с сервера. true при успехе
     bool updateNow() {
         if (!_UDP_ok || WiFi.status() != WL_CONNECTED) return _error(Status::NoWiFi);
-        if (!sendPacket()) return 0;
+        if (!_sendPacket()) return 0;
 
         while (udp.parsePacket() != 48) {
             if (millis() - _rtt > GNTP_NTP_TIMEOUT) return _error(Status::ResponseTimeout);
             delay(0);
         }
-        return readPacket();
+        return _readPacket();
+    }
+
+    // подключить обработчик смены статуса
+    void attachStatus(StatusHandler cb) {
+        _stat_cb = cb;
+    }
+
+    // отключить обработчик смены статуса
+    void detachStatus() {
+        _stat_cb = nullptr;
+    }
+
+    // подключить обработчик первой успешной синхронизации
+    void attachSync(SyncHandler cb) {
+        _sync_cb = cb;
+    }
+
+    // отключить обработчик первой успешной синхронизации
+    void detachSync() {
+        _sync_cb = nullptr;
     }
 
     // ============ DEPRECATED ============
@@ -174,9 +207,27 @@ class GyverNTP : public StampTicker {
     }
 
    private:
+    WiFiUDP udp;
+    String _host = GNTP_DEFAULT_HOST;
+    uint32_t _tmr = 0;
+    uint32_t _prd = 0;
+    uint32_t _rtt = 0;
+    StatusHandler _stat_cb = nullptr;
+    SyncHandler _sync_cb = nullptr;
+
+    int16_t _ping = 0;
+    Status _stat = Status::NoUDP;
+    bool _UDP_ok = false;
+    bool _online = false;
+    bool _busy = false;
+    bool _usePing = true;
+    bool _async = true;
+    bool _changed = false;
+    bool _first = true;
+
     using StampTicker::update;
 
-    bool sendPacket() {
+    bool _sendPacket() {
         uint8_t buf[48] = {0b11100011};  // LI 0x3, v4, client (https://ru.wikipedia.org/wiki/NTP)
         if (!udp.beginPacket(_host.c_str(), GNTP_NTP_PORT)) return _error(Status::ConnectionError);
         if (udp.write(buf, 48) != 48 || !udp.endPacket()) return _error(Status::RequestError);
@@ -184,7 +235,7 @@ class GyverNTP : public StampTicker {
         return _stat = Status::OK, 1;
     }
 
-    bool readPacket() {
+    bool _readPacket() {
         if (udp.remotePort() != GNTP_NTP_PORT) return _error(Status::ResponseError);  // не наш порт
         uint8_t buf[48];
         if (udp.read(buf, 48) != 48 || !buf[40]) return _error(Status::ResponseError);  // некорректное время
@@ -204,6 +255,10 @@ class GyverNTP : public StampTicker {
         update(unix, a_ms);
 
         _online = true;
+        if (_first) {
+            _first = false;
+            if (_sync_cb) _sync_cb();
+        }
         return _stat = Status::OK, 1;
     }
 
@@ -214,7 +269,7 @@ class GyverNTP : public StampTicker {
     bool _error(Status err) {
         _stat = err;
         _online = false;
-        _changed = true;
+        _change();
         return 0;
     }
 
@@ -226,18 +281,10 @@ class GyverNTP : public StampTicker {
         return 0;
     }
 
-    WiFiUDP udp;
-    String _host = GNTP_DEFAULT_HOST;
-    uint32_t _tmr = 0;
-    uint32_t _prd = 0;
-    uint32_t _rtt = 0;
-
-    int16_t _ping = 0;
-    Status _stat = Status::NoUDP;
-    bool _UDP_ok = false;
-    bool _online = false;
-    bool _busy = false;
-    bool _usePing = true;
-    bool _async = true;
-    bool _changed = false;
+    void _change() {
+        if (_stat_cb) _stat_cb();
+        _changed = true;
+    }
 };
+
+extern GyverNTP NTP;

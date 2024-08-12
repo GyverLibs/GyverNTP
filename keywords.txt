@@ -7,6 +7,7 @@
 #######################################
 
 GyverNTP	KEYWORD1
+NTP	KEYWORD1
 
 #######################################
 # Methods and Functions (KEYWORD2)
@@ -38,6 +39,10 @@ status	KEYWORD2
 synced	KEYWORD2
 ignorePing	KEYWORD2
 statusChanged	KEYWORD2
+attachStatus	KEYWORD2
+detachStatus	KEYWORD2
+attachSync	KEYWORD2
+detachSync	KEYWORD2
 
 #######################################
 # Constants (LITERAL1)
