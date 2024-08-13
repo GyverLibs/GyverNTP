@@ -120,40 +120,41 @@ class GyverNTP : public StampTicker {
     // тикер, обновляет время по своему таймеру. Вернёт true на каждой секунде, если синхронизирован
     bool tick() {
         if (_changed) _changed = 0;
-        if (!_UDP_ok) return 0;
 
-        if (WiFi.status() != WL_CONNECTED) {
-            if (_stat != Status::NoWiFi) {
-                _error(Status::NoWiFi);
+        if (_UDP_ok) {
+            if (WiFi.status() != WL_CONNECTED) {
+                if (_stat != Status::NoWiFi) {
+                    _error(Status::NoWiFi);
+                }
             }
-        }
 
-        if (WiFi.status() == WL_CONNECTED) {
-            if (_async) {
-                if (!_busy) {
-                    if (_timeToUpdate()) {
-                        _busy = _sendPacket();
-                        _change();
+            if (WiFi.status() == WL_CONNECTED) {
+                if (_async) {
+                    if (!_busy) {
+                        if (_timeToUpdate()) {
+                            _busy = _sendPacket();
+                            _change();
+                        }
+                    } else {
+                        if (millis() - _rtt > GNTP_NTP_TIMEOUT) {
+                            _error(Status::ResponseTimeout);
+                            _busy = false;
+                        }
+                        if (udp.parsePacket() == 48) {
+                            _readPacket();
+                            _busy = false;
+                            _change();
+                        }
                     }
                 } else {
-                    if (millis() - _rtt > GNTP_NTP_TIMEOUT) {
-                        _error(Status::ResponseTimeout);
-                        _busy = false;
-                    }
-                    if (udp.parsePacket() == 48) {
-                        _readPacket();
-                        _busy = false;
+                    if (_timeToUpdate()) {
+                        updateNow();
                         _change();
                     }
                 }
-            } else {
-                if (_timeToUpdate()) {
-                    updateNow();
-                    _change();
-                }
             }
         }
-
+        
         return StampTicker::tick();
     }
 
