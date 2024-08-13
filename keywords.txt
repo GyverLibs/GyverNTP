@@ -6,6 +6,7 @@
 # Datatypes (KEYWORD1)
 #######################################
 
+GyverNTPClient	KEYWORD1
 GyverNTP	KEYWORD1
 NTP	KEYWORD1
 

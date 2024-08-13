@@ -19,7 +19,7 @@
 - Асинхронный режим
 
 ### Совместимость
-esp8266, esp32
+Все платформы
 
 ### Зависимости
 - [Stamp](https://github.com/GyverLibs/Stamp)
@@ -109,6 +109,7 @@ bool updateNow();
 ```
 
 ## Особенности
+- GyverNTP работает с WiFi UDP для esp8266/esp32, но может использоваться любой другой UDP клиент (см. ниже)
 - Существует глобальный объект `NTP` (как `Serial`, `Wire` И проч.)
 - Нужно вызывать `tick()` в главном цикле программы `loop()`, он синхронизирует время с сервера по своему таймеру и обеспечивает работу секундного таймера
 - Если основной цикл программы сильно загружен, а время нужно получать с максимальной точностью (несколько мс), то можно выключить асинхронный режим `asyncMode(false)`
@@ -230,7 +231,7 @@ if (NTP.tick()) {
 }
 ```
 
-### GMT
+### GMT (часовой пояс)
 Часовой пояс задаётся для всех операций со Stamp/Datime в программе! Установка часового пояса в объекте NTP равносильна вызову `setStampZone()` - установка глобального часового пояса для библиотеки Stamp
 
 <a id="example"></a>
@@ -260,6 +261,31 @@ void loop() {
   if (NTP.newSecond()) {
     Serial.println(NTP.toString());      // вывод даты и времени строкой
   }
+}
+```
+
+### Другой UDP клиент
+По умолчанию библиотека работает с WiFiUDP для esp8266/32, но может работать и с другими `UDP` клиентами: подключается в `GyverNTPClient`
+```cpp
+#include <GyverNTPClient.h>
+#include <WiFiUdp.h>
+
+WiFiUDP udp;
+GyverNTPClient ntp(udp);
+
+void setup() {
+    Serial.begin(115200);
+    WiFi.begin("AlexMain", "lolpass12345");
+    while (WiFi.status() != WL_CONNECTED) delay(100);
+    Serial.println("Connected");
+
+    ntp.begin(3);
+}
+
+void loop() {
+    if (ntp.tick()) {
+        Serial.println(ntp.toString());
+    }
 }
 ```
 
