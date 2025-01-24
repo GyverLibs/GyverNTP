@@ -1,7 +1,7 @@
 #pragma once
 
-#define GNTP_OFF_PERIOD 3000              // период опроса при оффлайн статусе, мс
-#define GNTP_NTP_TIMEOUT 2500             // таймаут ожидания ответа от NTP сервера, мс
+#define GNTP_OFF_PERIOD 3000ul            // период опроса при оффлайн статусе, мс
+#define GNTP_NTP_TIMEOUT 2500ul           // таймаут ожидания ответа от NTP сервера, мс
 #define GNTP_LOCAL_PORT 1234              // локальный udp порт
 #define GNTP_DEFAULT_HOST "pool.ntp.org"  // хост по умолчанию
 #define GNTP_NTP_PORT 123                 // ntp порт
@@ -42,8 +42,8 @@ class GyverNTPClient : public StampTicker {
 
     // установить период обновления в секундах
     void setPeriod(uint16_t prd) {
-        if (prd < GNTP_NTP_TIMEOUT) prd = GNTP_NTP_TIMEOUT + 100;
         _prd = prd * 1000ul;
+        if (_prd < GNTP_NTP_TIMEOUT) _prd = GNTP_NTP_TIMEOUT + 100;
     }
 
     // установить хост (умолч. "pool.ntp.org")
