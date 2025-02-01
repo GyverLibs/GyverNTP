@@ -8,21 +8,23 @@
 
 # GyverNTP
 Библиотека для получения точного времени с NTP сервера для esp8266/esp32
-- Работает на стандартной библиотеке WiFiUdp.h
+- Работает на стандартном интерфейсе Udp.h
 - Учёт времени ответа сервера и задержки соединения
 - Получение времени с точностью до миллисекунд
-- Интеграция с библиотекой [Stamp](https://github.com/GyverLibs/Stamp) для распаковки unix в часы, минуты итд.
+- Интеграция с библиотекой [Stamp](https://github.com/GyverLibs/Stamp) для распаковки unix в часы, минуты итд
 - Автоматическая синхронизация
 - Поддержание хода времени на базе millis() между синхронизациями
 - Секундный таймер для удобства автоматизации
 - Обработка ошибок
 - Асинхронный режим
+- Поддержка внешнего RTC
+- Кеширование DNS, стабильная работа и возможность проверки наличия Интернет
 
 ### Совместимость
 Все платформы
 
 ### Зависимости
-- [Stamp](https://github.com/GyverLibs/Stamp)
+- [Stamp](https://github.com/GyverLibs/Stamp) v1.4.0+
 
 ## Содержание
 - [Инициализация](#init)
@@ -47,65 +49,73 @@ GyverNTP(gmt, period);    // часовой пояс в часах и перио
 
 ## Использование
 ```cpp
-// Наследует StampTicker
-
-// установить часовой пояс в часах или минутах
+// установить часовой пояс в часах или минутах (глобально для Stamp)
 void setGMT(int16_t gmt);
 
 // установить период обновления в секундах
 void setPeriod(uint16_t prd);
 
-// установить хост (умолч. "pool.ntp.org")
-void setHost(const String& host);
-
-// запустить
-bool begin();
-
-// запустить и установить часовой пояс в часах или минутах
-bool begin(int16_t gmt);
-
-// остановить
-void end();
-
 // включить асинхронный режим (по умолч. true)
 void asyncMode(bool async);
 
-// получить пинг сервера, мс
+// установить хост (умолч. "pool.ntp.org")
+void setHost(const String& host);
+
+// установить хост IP
+void setHost(const IPAddress& host);
+
+// установить порт (умолч. 123)
+void setPort(uint16_t port);
+
+// получить пинг NTP сервера, мс
 int16_t ping();
 
+// вернёт true при изменении статуса online
+bool statusChanged();
+
 // не учитывать пинг соединения (умолч. false)
-void ignorePing(bool ignore);
+void ignorePing(bool ignore) {
+    _usePing = ignore;
+}
+
+// подключить RTC
+void attachRTC(VirtualRTC& rtc);
+
+// отключить RTC
+void detachRTC();
+
+// подключить обработчик ошибки
+void onError(ErrorCallback cb);
+
+// получить последнюю ошибку
+Error getError();
+
+// получить последнюю ошибку
+const __FlashStringHelper* readError();
+
+// есть ошибка
+bool hasError();
 
 // вернёт true, если tick ожидает ответа сервера в асинхронном режиме
 bool busy();
 
-// получить статус последнего действия
-Status status();
-
-// true - не было ошибок связи и есть соединение с Интернет
+// true - есть соединение с Интернет
 bool online();
 
-// вернёт true при изменении статуса
-bool statusChanged();
+// запустить
+bool begin();
 
-// подключить обработчик смены статуса вида void f()
-void attachStatus(StatusHandler cb);
+// запустить с указанием часового пояса в часах или минутах (глобально для Stamp)
+bool begin(int16_t gmt);
 
-// отключить обработчик смены статуса
-void detachStatus();
+// выключить NTP
+void end();
 
-// подключить обработчик первой успешной синхронизации вида void f()
-void attachSync(SyncHandler cb);
-
-// отключить обработчик первой успешной синхронизации
-void detachSync();
-
-// ============== ТИКЕР ===============
-// тикер, обновляет время по своему таймеру. Вернёт true на каждой секунде, если синхронизирован
-bool tick();
-
-// вручную запросить и обновить время с сервера. true при успехе
+// синхронно обновить время с сервера. true при успехе
 bool updateNow();
+
+// тикер, вызывать в loop. Вернёт true каждую секунду, если синхронизирован. Синхронизируется по таймеру
+bool tick();
 ```
 
 ## Особенности
@@ -114,18 +124,29 @@ bool updateNow();
 - Нужно вызывать `tick()` в главном цикле программы `loop()`, он синхронизирует время с сервера по своему таймеру и обеспечивает работу секундного таймера
 - Если основной цикл программы сильно загружен, а время нужно получать с максимальной точностью (несколько мс), то можно выключить асинхронный режим `asyncMode(false)`
 - Библиотека продолжает считать время после пропадания синхронизации. По моим тестам esp "уходит" на ~1.7 секунды за сутки, поэтому стандартный период синхронизации выбран 1 час
-- Наследуется класс StampTicker, который обеспечивает счёт времени и работу секундного таймера
+- Наследуется класс `StampKeeper`, который обеспечивает счёт времени, работу секундного таймера и удобную конвертацию времени
+
+### Часовой пояс
+Часовой пояс задаётся для всех операций со Stamp/Datime в программе! Установка часового пояса в объекте NTP равносильна вызову `setStampZone()` - установка **глобального** часового пояса для библиотеки Stamp:
+
+```cpp
+void setup() {
+    // подключить к WiFi
+    NTP.begin(3); // запустить и указать часовой пояс
+}
+```
 
 ### Минимальный пример
 ```cpp
 #include <GyverNTP.h>
 
 void setup() {
-  NTP.begin(3);  // запустить и указать часовой пояс
+    // подключить к WiFi
+    NTP.begin(3); // запустить и указать часовой пояс
 }
 
 void loop() {
-  NTP.tick();  // вызывать тикер в loop
+    NTP.tick();   // вызывать тикер в loop
 }
 ```
 
@@ -141,7 +162,7 @@ void loop() {
 
   // или так
   // NTP.tick();
-  // if (NTP.newSecond()) {}
+  // if (NTP.newSecond()) { }
 }
 ```
 
@@ -152,11 +173,67 @@ void newSecond() {
 }
 
 void setup() {
-  NTP.attachSecond(newSecond);
+  // подключить к WiFi
+  NTP.begin(3); // запустить и указать часовой пояс
+  NTP.onSecond(newSecond);
+
+  // или так
+  NTP.onSecond([](){
+    // ваш код
+  });
 }
 
 void loop() {
-  NTP.tick();  // вызывать тикер в loop
+  NTP.tick();
+}
+```
+
+### Получение времени
+GyverNTP наследует [StampConvert](https://github.com/GyverLibs/Stamp), то есть получать время можно множеством способов:
+
+```cpp
+// каждую секунду
+if (NTP.tick()) {
+  // вывод даты и времени строкой
+  Serial.print(NTP.toString());  // NTP.timeToString(), NTP.dateToString()
+  Serial.print(':');
+  Serial.println(NTP.ms());  // + миллисекунды текущей секунды. Внутри tick всегда равно 0
+
+  // вывод в Datime
+  Datime dt = NTP;  // или Datime dt(NTP)
+  dt.year;
+  dt.second;
+  dt.hour;
+  dt.weekDay;
+  dt.yearDay;
+  // ... и прочие методы и переменные Datime
+
+  // чтение напрямую, медленнее чем вывод в Datime
+  NTP.second();
+  NTP.minute();
+  NTP.year();
+  // ... и прочие методы StampConvert
+
+  // сравнение
+  NTP == DaySeconds(12, 35, 0);            // сравнение с DaySeconds (время равно 12:35:00)
+  NTP == 1738237474;                       // сравнение с unix
+  NTP == Datime(2025, 1, 30, 14, 14, 30);  // сравнение с Datime
+}
+```
+
+### Режим синхронизации
+GyverNTP может использоваться и **без тикера** - нужно вручную вызвать `updateNow` для синхронизации времени. В этом случае время будет считаться просто с момента последней синхронизации, обработчик секунд не будет работать:
+
+```cpp
+void setup() {
+  // подключить к WiFi
+  NTP.begin(3);     // запустить и указать часовой пояс
+  NTP.updateNow();  // синхронизировать
+}
+
+void loop() {
+  Serial.println(NTP.toString());
+  delay(1000);
 }
 ```
 
@@ -168,9 +245,10 @@ void loop() {
 Это сделано для того, чтобы при синхронизации не потерялись секунды - библиотека обработает каждую секунду и не будет повторяться, что очень важно для алгоритмов автоматизации.
 
 ### Проверка онлайна
-NTP работает по UDP - очень легковесному и "дешёвому" протоколу связи, обращение к серверу правтически не занимает времени. Благодаря этому NTP можно использовать для проверки связи с Интернет - там, где стандартный TCP клиент зависнет на несколько секунд, NTP асинхронно сообщит о потере связи. В рамках GyverNTP это можно использовать так:
+NTP работает по UDP - очень легковесному и "дешёвому" протоколу связи, обращение к серверу практически не занимает времени. Благодаря этому NTP можно использовать для проверки связи с Интернет - там, где стандартный TCP клиент зависнет на несколько секунд, NTP асинхронно сообщит о потере связи. В рамках GyverNTP это можно использовать так:
 ```cpp
 void setup() {
+  // подключить к WiFi
   NTP.begin(3);
   NTP.setPeriod(5); // синхронизация каждые 5 секунд
 }
@@ -188,103 +266,138 @@ void loop() {
 }
 ```
 
-### Получение времени
-GyverNTP наследует [StampCore](https://github.com/GyverLibs/Stamp?tab=readme-ov-file#stamp-1), то есть получать время можно множеством способов:
-```cpp
-// каждую секунду
-if (NTP.tick()) {
+### Подключение RTC
+Библиотека поддерживает подключение внешнего RTC для синхронизации времени:
+- Если пришло время синхронизироваться с NTP, но возникла ошибка - будет синхронизировано время с RTC
+- Если успешно синхронизирован с NTP, то в RTC также будет записано актуальное время (не чаще чем `GNTP_RTC_WRITE_PERIOD`, по умолч. 1 час)
 
-  Serial.println(NTP.toString());     // вывод даты и времени строкой
-  Serial.println(NTP.dateToString()); // вывод даты строкой
-
-  // можно сравнивать напрямую с unix
-  if (NTP >= 12345) { }
-  if (NTP == 123456) { }
-
-  NTP.getUnix();  // unix секунды
-
-  // парсинг unix на дату и время
-  NTP.second();   // секунды
-  NTP.minute();   // минуты и так далее
-
-  // эффективнее использовать парсер Datime
-  Datime dt(NTP);  // NTP само конвертируется в Datime
-
-  dt.year;
-  dt.month;
-  dt.day;
-  dt.hour;
-  dt.minute;
-  dt.second;
-  dt.weekDay;
-  dt.yearDay;
-
-  // для автоматизации внутри суток удобно использовать 
-  // секунды с начала суток, daySeconds()
-  NTP.daySeconds();
-
-  // для удобства также есть класс DaySeconds, позволяющий задать время внутри суток
-  DaySeconds ds(5, 10, 0);  // 5 часов, 10 минут, 0 секунд
-
-  // GyverNTP может сравниваться напрямую с DaySeconds
-  if (NTP == ds) { }
-}
-```
-
-### GMT (часовой пояс)
-Часовой пояс задаётся для всех операций со Stamp/Datime в программе! Установка часового пояса в объекте NTP равносильна вызову `setStampZone()` - установка глобального часового пояса для библиотеки Stamp
+Объект RTC должен являться экземпляром класса `VirtualRTC`, из готовых например `GyverDS3231Min`. Можно написать и свой класс для подключения любого источника реального времени.
 
 <a id="example"></a>
 
 ## Пример
+### Полное демо
 ```cpp
-// пример выводит время каждую секунду
+#include <Arduino.h>
 #include <GyverNTP.h>
-
-// список серверов, если "pool.ntp.org" не работает
-//"ntp1.stratum2.ru"
-//"ntp2.stratum2.ru"
-//"ntp.msk-ix.ru"
-
-void setup() {
-  Serial.begin(115200);
-  WiFi.begin("WIFI_SSID", "WIFI_PASS");
-  while (WiFi.status() != WL_CONNECTED) delay(100);
-  Serial.println("Connected");
-
-  NTP.begin(3);  // Москва +3
-}
-
-void loop() {
-  NTP.tick();
-  
-  if (NTP.newSecond()) {
-    Serial.println(NTP.toString());      // вывод даты и времени строкой
-  }
-}
-```
-
-### Другой UDP клиент
-По умолчанию библиотека работает с WiFiUDP для esp8266/32, но может работать и с другими `UDP` клиентами: подключается в `GyverNTPClient`
-```cpp
-#include <GyverNTPClient.h>
-#include <WiFiUdp.h>
-
-WiFiUDP udp;
-GyverNTPClient ntp(udp);
 
 void setup() {
     Serial.begin(115200);
-    WiFi.begin("AlexMain", "lolpass12345");
+    WiFi.begin("WIFI_SSID", "WIFI_PASS");
     while (WiFi.status() != WL_CONNECTED) delay(100);
     Serial.println("Connected");
 
-    ntp.begin(3);
+    // обработчик ошибок
+    NTP.onError([]() {
+        Serial.println(NTP.readError());
+        Serial.print("online: ");
+        Serial.println(NTP.online());
+    });
+
+    // обработчик секунды (вызывается из тикера)
+    NTP.onSecond([]() {
+        Serial.println("new second!");
+    });
+
+    // обработчик синхронизации (вызывается из sync)
+    // NTP.onSync([](uint32_t unix) {
+    //     Serial.println("sync: ");
+    //     Serial.print(unix);
+    // });
+
+    NTP.begin(3);                           // запустить и указать часовой пояс
+    // NTP.setPeriod(30);                   // период синхронизации в секундах
+    // NTP.setHost("ntp1.stratum2.ru");     // установить другой хост
+    // NTP.setHost(IPAddress(1, 2, 3, 4));  // установить другой хост
+    // NTP.asyncMode(false);                // выключить асинхронный режим
+    // NTP.ignorePing(true);                // не учитывать пинг до сервера
+    // NTP.updateNow();                     // обновить прямо сейчас
 }
 
 void loop() {
-    if (ntp.tick()) {
-        Serial.println(ntp.toString());
+    // тикер вернёт true каждую секунду в 0 мс секунды, если время синхронизировано
+    if (NTP.tick()) {
+        // вывод даты и времени строкой
+        Serial.print(NTP.toString());  // NTP.timeToString(), NTP.dateToString()
+        Serial.print(':');
+        Serial.println(NTP.ms());  // + миллисекунды текущей секунды. Внутри tick всегда равно 0
+
+        // вывод в Datime
+        Datime dt = NTP;  // или Datime dt(NTP)
+        dt.year;
+        dt.second;
+        dt.hour;
+        dt.weekDay;
+        dt.yearDay;
+        // ... и прочие методы и переменные Datime
+
+        // чтение напрямую, медленнее чем вывод в Datime
+        NTP.second();
+        NTP.minute();
+        NTP.year();
+        // ... и прочие методы StampConvert
+
+        // сравнение
+        NTP == DaySeconds(12, 35, 0);            // сравнение с DaySeconds (время равно 12:35:00)
+        NTP == 1738237474;                       // сравнение с unix
+        NTP == Datime(2025, 1, 30, 14, 14, 30);  // сравнение с Datime
+    }
+
+    if (NTP.newSecond()) {
+        // новую секунду можно поймать и здесь
+    }
+
+    // изменился онлайн-статус
+    if (NTP.statusChanged()) {
+        Serial.print("STATUS: ");
+        Serial.println(NTP.online());
+    }
+}
+```
+
+### RTC
+
+```cpp
+#include <Arduino.h>
+#include <GyverNTP.h>
+
+// GyverDS3231 поддерживает работу с GyverNTP
+#include <GyverDS3231Min.h>
+GyverDS3231Min rtc;
+
+// можно написать свой класс и использовать любой другой RTC
+class RTC : public VirtualRTC {
+   public:
+    void setUnix(uint32_t unix) {
+        Serial.print("SET RTC: ");
+        Serial.println(unix);
+    }
+    uint32_t getUnix() {
+        return 1738015299ul;
+    }
+};
+RTC vrtc;
+
+void setup() {
+    Serial.begin(115200);
+    WiFi.begin("WIFI_SSID", "WIFI_PASS");
+    // while (WiFi.status() != WL_CONNECTED) delay(100);
+    Serial.println("Connected");
+
+    // GyverDS3231
+    Wire.begin();
+    rtc.begin();
+
+    NTP.begin(3);  // запустить и указать часовой пояс
+
+    // подключить RTC
+    // NTP.attachRTC(vrtc);
+    NTP.attachRTC(rtc);
+}
+
+void loop() {
+    if (NTP.tick()) {
+        Serial.println(NTP.toString());
     }
 }
 ```
@@ -300,6 +413,7 @@ void loop() {
 - v1.3.1 - заинклудил WiFi библиотеку в файл
 - v2.0 - добавлена зависимость от Stamp, больше возможностей, проверка онлайна для других библиотек
 - v2.1 - добавлен глобальный объект NTP
+- v2.2.0 - более стабильная работа, новые возможности
 
 <a id="install"></a>
 

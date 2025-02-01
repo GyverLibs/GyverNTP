@@ -10,11 +10,11 @@ GyverNTPClient ntp(udp);
 
 void setup() {
     Serial.begin(115200);
-    WiFi.begin("AlexMain", "lolpass12345");
+    WiFi.begin("WIFI_SSID", "WIFI_PASS");
     while (WiFi.status() != WL_CONNECTED) delay(100);
     Serial.println("Connected");
 
-    ntp.begin(3);
+    ntp.begin(3);   // часовой пояс
 }
 
 void loop() {
