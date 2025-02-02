@@ -3,14 +3,6 @@
 #include <Udp.h>
 #include <VirtualRTC.h>
 
-#if defined(ESP8266)
-#include <ESP8266WiFi.h>
-#elif defined(ESP32)
-#include <WiFi.h>
-#else
-#error "No implementation for given platform"
-#endif
-
 #define GNTP_MIN_PERIOD (5ul * 1000)              // минимальный период синхронизации
 #define GNTP_DNS_PERIOD (10ul * 60 * 1000)        // период обновления DNS
 #define GNTP_OFFLINE_DNS_PERIOD (15 * 1000ul)     // период опроса при первом оффлайн статусе, мс
@@ -208,7 +200,7 @@ class GyverNTPClient : public StampKeeper {
     bool tick() {
         if (_changed) _changed = false;
         if (_state != State::Disabled) {
-            if (_first && _connected()) {
+            if (_first && connected()) {
                 _first = false;
                 _sync_tmr.reset();
             }
@@ -219,7 +211,7 @@ class GyverNTPClient : public StampKeeper {
                         break;
 
                     case State::WaitPacket:
-                        if (_connected()) {
+                        if (connected()) {
                             if (_available()) _readPacket();
                             else if (millis() - _rtt > GNTP_NTP_TIMEOUT) _setError(Error::Timeout);
                         } else {
@@ -235,6 +227,10 @@ class GyverNTPClient : public StampKeeper {
         }
         return StampKeeper::tick();
     }
+
+   protected:
+    virtual bool connected() = 0;
+    virtual IPAddress getHostIP(const char* host) = 0;
 
    private:
     class Timer {
@@ -280,10 +276,6 @@ class GyverNTPClient : public StampKeeper {
     bool _first = true;
     // bool _rtc_synced = false;
 
-    bool _connected() {
-        return WiFi.status() == WL_CONNECTED;
-    }
-
     bool _timeToSync() {
         return (_sync_tmr.elapsed(_host_ip ? (_online ? _prd : GNTP_OFFLINE_PERIOD) : GNTP_OFFLINE_DNS_PERIOD));
     }
@@ -292,8 +284,8 @@ class GyverNTPClient : public StampKeeper {
         if (_host.length()) {
             if (!_host_ip || _dns_tmr.elapsed(GNTP_DNS_PERIOD)) {
                 _dns_tmr.restart();
-                IPAddress host;
-                if (WiFi.hostByName(_host.c_str(), host)) _host_ip = host;
+                IPAddress host = getHostIP(_host.c_str());
+                if (host) _host_ip = host;
             }
         }
         return _host_ip;
@@ -301,7 +293,7 @@ class GyverNTPClient : public StampKeeper {
 
     bool _sendPacket() {
         uint8_t buf[48] = {0b11100011};
-        if (!_connected()) return _setError(Error::WiFi);
+        if (!connected()) return _setError(Error::WiFi);
         if (!_getHost()) return _setError(Error::Host);
         if (!udp.beginPacket(_host_ip, _port)) return _setError(Error::BeginPacket);
         if (!(udp.write(buf, 48) == 48 && udp.endPacket())) return _setError(Error::SendPacket);

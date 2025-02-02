@@ -16,6 +16,17 @@ class GyverNTP : public GyverNTPClient {
    public:
     GyverNTP(int16_t gmt = 0, uint16_t prd = 3600) : GyverNTPClient(udp, gmt, prd) {}
 
+   protected:
+    bool connected() {
+        return WiFi.status() == WL_CONNECTED;
+    }
+
+    IPAddress getHostIP(const char* host) {
+        IPAddress ip;
+        WiFi.hostByName(host, ip);
+        return ip;
+    }
+
    private:
     WiFiUDP udp;
 };
