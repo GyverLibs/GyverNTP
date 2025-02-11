@@ -224,6 +224,8 @@ class GyverNTPClient : public StampKeeper {
             } else {
                 if (_timeToSync()) updateNow();
             }
+        } else if (_rtc && _rtc_r_tmr.elapsed(_prd)) {
+            StampKeeper::sync(_rtc->getUnix());
         }
         return StampKeeper::tick();
     }
