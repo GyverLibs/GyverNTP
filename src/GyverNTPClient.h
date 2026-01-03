@@ -62,6 +62,12 @@ class GyverNTPClient : public StampKeeper {
         _host_ip = INADDR_NONE;
     }
 
+    // установить хост (умолч. "pool.ntp.org")
+    void setHost(const char* host) {
+        _host = host;
+        _host_ip = INADDR_NONE;
+    }
+
     // установить хост IP
     void setHost(const IPAddress& host) {
         _host = "";
