@@ -47,8 +47,8 @@ void loop() {
         dt.year;
         dt.second;
         dt.hour;
-        dt.weekDay;
-        dt.yearDay;
+        dt.weekDay();
+        dt.yearDay();
         // ... и прочие методы и переменные Datime
 
         // чтение напрямую, медленнее чем вывод в Datime

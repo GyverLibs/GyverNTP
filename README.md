@@ -24,7 +24,7 @@
 Все платформы
 
 ### Зависимости
-- [Stamp](https://github.com/GyverLibs/Stamp) v1.4.0+
+- [Stamp](https://github.com/GyverLibs/Stamp) v1.5.0+
 
 ## Содержание
 - [Инициализация](#init)
@@ -74,9 +74,7 @@ int16_t ping();
 bool statusChanged();
 
 // не учитывать пинг соединения (умолч. false)
-void ignorePing(bool ignore) {
-    _usePing = ignore;
-}
+void ignorePing(bool ignore);
 
 // подключить RTC
 void attachRTC(VirtualRTC& rtc);
@@ -204,8 +202,8 @@ if (NTP.tick()) {
   dt.year;
   dt.second;
   dt.hour;
-  dt.weekDay;
-  dt.yearDay;
+  dt.weekDay();
+  dt.yearDay();
   // ... и прочие методы и переменные Datime
 
   // чтение напрямую, медленнее чем вывод в Datime
@@ -321,26 +319,6 @@ void loop() {
         Serial.print(NTP.toString());  // NTP.timeToString(), NTP.dateToString()
         Serial.print(':');
         Serial.println(NTP.ms());  // + миллисекунды текущей секунды. Внутри tick всегда равно 0
-
-        // вывод в Datime
-        Datime dt = NTP;  // или Datime dt(NTP)
-        dt.year;
-        dt.second;
-        dt.hour;
-        dt.weekDay;
-        dt.yearDay;
-        // ... и прочие методы и переменные Datime
-
-        // чтение напрямую, медленнее чем вывод в Datime
-        NTP.second();
-        NTP.minute();
-        NTP.year();
-        // ... и прочие методы StampConvert
-
-        // сравнение
-        NTP == DaySeconds(12, 35, 0);            // сравнение с DaySeconds (время равно 12:35:00)
-        NTP == 1738237474;                       // сравнение с unix
-        NTP == Datime(2025, 1, 30, 14, 14, 30);  // сравнение с Datime
     }
 
     if (NTP.newSecond()) {
