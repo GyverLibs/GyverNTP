@@ -33,13 +33,14 @@ class GyverNTPLight : public StampKeeper {
     bool tick() {
         if (millis() - _tmr >= (StampKeeper::synced() ? NTPL_SYNC_PRD : NTPL_SYNC_COLD_PRD)) {
             _tmr = millis();
-            StampKeeper::sync(requestNTP(_host, _port, NTPL_TIMEOUT));
+            uint32_t unix = requestNTP(_host, _port, NTPL_TIMEOUT);
+            if (unix) StampKeeper::sync(unix);
         }
         return StampKeeper::tick();
     }
 
    private:
-    uint32_t _tmr;
+    uint32_t _tmr = 0;
     const char* _host = "pool.ntp.org";
     uint16_t _port = 123;
 };

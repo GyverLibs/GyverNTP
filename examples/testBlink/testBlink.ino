@@ -4,6 +4,10 @@
 #include <Arduino.h>
 #include <GyverNTP.h>
 
+#ifndef LED_BUILTIN
+#define LED_BUILTIN 2
+#endif
+
 void setup() {
     Serial.begin(115200);
     WiFi.begin("WIFI_SSID", "WIFI_PASS");

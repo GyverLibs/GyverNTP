@@ -15,16 +15,25 @@ static uint32_t requestNTP(const char* host = "pool.ntp.org", uint16_t port = 12
     if (!udp.begin(1234) ||
         !udp.beginPacket(host, port) ||
         udp.write(buf, 48) != 48 ||
-        !udp.endPacket()) return 0;
+        !udp.endPacket()) {
+        udp.stop();
+        return 0;
+    }
 
     while (udp.parsePacket() != 48) {
-        if (!--tout) return 0;
+        if (!--tout) {
+            udp.stop();
+            return 0;
+        }
         delay(1);
     }
 
     if (udp.remotePort() != port ||
         udp.read(buf, 48) != 48 ||
-        !buf[40]) return 0;
+        !buf[40]) {
+        udp.stop();
+        return 0;
+    }
 
-    return (((buf[40] << 8 | buf[41]) << 16) | (buf[42] << 8 | buf[43])) - 2208988800ul;
+    return (((uint32_t)buf[40] << 24) | ((uint32_t)buf[41] << 16) | ((uint32_t)buf[42] << 8) | buf[43]) - 2208988800ul;
 }

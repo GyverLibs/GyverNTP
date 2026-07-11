@@ -2,6 +2,9 @@
 #include <StampKeeper.h>
 #include <Udp.h>
 #include <VirtualRTC.h>
+#ifndef __AVR__
+#include <functional>
+#endif
 
 #define GNTP_MIN_PERIOD (5ul * 1000)              // минимальный период синхронизации
 #define GNTP_DNS_PERIOD (10ul * 60 * 1000)        // период обновления DNS
@@ -14,7 +17,11 @@
 #define GNTP_NTP_HOST "pool.ntp.org"              // ntp хост по умолчанию
 
 class GyverNTPClient : public StampKeeper {
+#ifdef __AVR__
+    typedef void (*ErrorCallback)();
+#else
     typedef std::function<void()> ErrorCallback;
+#endif
 
     enum class State : uint8_t {
         Disabled,
@@ -152,7 +159,14 @@ class GyverNTPClient : public StampKeeper {
     // запустить
     bool begin() {
         if (_state == State::Disabled) {
-            if (!udp.begin(GNTP_LOCAL_PORT)) return _setError(Error::Begin);
+            if (!udp.begin(GNTP_LOCAL_PORT)) {
+                _error = Error::Begin;
+                _ping = 0;
+                _changed = false;
+                _online = false;
+                if (_state_cb) _state_cb();
+                return false;
+            }
 
             _state = State::Idle;
             _error = Error::None;
@@ -325,11 +339,15 @@ class GyverNTPClient : public StampKeeper {
             uint16_t r_ms = (_merge(buf + 36) * 1000) >> 16;  // мс запроса клиента
             int16_t err = a_ms - r_ms;                        // время обработки сервером
             if (err < 0) err += 1000;                         // переход через секунду
-            _rtt = (_rtt - err) / 2;                          // текущий пинг
+            _rtt = (_rtt > (uint32_t)err) ? ((_rtt - err) / 2) : 0;  // текущий пинг
             _ping = _ping ? (_ping + _rtt) / 2 : _rtt;        // бегущее среднее по двум
             a_ms += _ping;
         }
         uint32_t unix = ((_merge(buf + 40) << 16) | _merge(buf + 42)) - 2208988800ul;  // 1900 to unix
+        if (a_ms >= 1000) {
+            unix += a_ms / 1000;
+            a_ms %= 1000;
+        }
 
         // пропускать тики если подключен и не синхронизирован rtc
         StampKeeper::sync(unix, a_ms /*, (_rtc && !_rtc_synced)*/);
@@ -347,7 +365,7 @@ class GyverNTPClient : public StampKeeper {
         return true;
     }
 
-    inline uint32_t _merge(uint8_t* buf) {
+    inline uint32_t _merge(const uint8_t* buf) {
         return (buf[0] << 8) | buf[1];
     }
 
